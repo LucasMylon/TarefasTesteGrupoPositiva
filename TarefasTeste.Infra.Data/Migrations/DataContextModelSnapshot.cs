@@ -48,6 +48,10 @@ namespace TarefasTeste.Infra.Data.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("TITULO");
 
+                    b.Property<string>("UsuarioEmail")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("USUARIOEMAIL");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Titulo")

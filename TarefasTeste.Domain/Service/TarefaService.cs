@@ -18,13 +18,17 @@ namespace TarefasTeste.Domain.Service
             _tarefaRepository = tarefaRepository;
         }
 
-        public TarefaResponse AddTarefa(TarefaRequest request)
+        public TarefaResponse AddTarefa(TarefaRequest request, string usuarioEmail)
         {
+            if (string.IsNullOrWhiteSpace(usuarioEmail))
+                throw new ArgumentException("Email do usuário é obrigatório.");
+
             var tarefa = new Tarefa
             {
                 Titulo = request.Titulo,
                 Descricao = request.Descricao,
-                Status = request.Status
+                Status = request.Status,
+                UsuarioEmail = usuarioEmail
             };
             _tarefaRepository.Add(tarefa);
             return new TarefaResponse
@@ -33,16 +37,19 @@ namespace TarefasTeste.Domain.Service
                 Titulo = tarefa.Titulo,
                 Descricao = tarefa.Descricao,
                 Status = tarefa.Status,
-                DataHoraCriacao = tarefa.DataHoraCriacao
+                DataHoraCriacao = tarefa.DataHoraCriacao,
+                UsuarioEmail = tarefa.UsuarioEmail
             };
         }
 
-        public TarefaResponse UpdateTarefa(Guid id, TarefaRequest request)
+        public TarefaResponse UpdateTarefa(Guid id, TarefaRequest request, string usuarioEmail)
         {
             if (id == Guid.Empty)
                 throw new ArgumentException("ID inválido.");
+            if (string.IsNullOrWhiteSpace(usuarioEmail))
+                throw new ArgumentException("Email do usuário é obrigatório.");
 
-            var tarefa = _tarefaRepository.GetAll().FirstOrDefault(t => t.Id == id);
+            var tarefa = _tarefaRepository.GetAll().FirstOrDefault(t => t.Id == id && t.UsuarioEmail == usuarioEmail);
             if (tarefa == null)
                 throw new KeyNotFoundException("Tarefa não encontrada.");
 
@@ -56,18 +63,21 @@ namespace TarefasTeste.Domain.Service
                 Titulo = tarefa.Titulo,
                 Descricao = tarefa.Descricao,
                 Status = tarefa.Status,
-                DataHoraCriacao = tarefa.DataHoraCriacao
+                DataHoraCriacao = tarefa.DataHoraCriacao,
+                UsuarioEmail = tarefa.UsuarioEmail
             };
 
         }
 
-        public TarefaResponse DeleteTarefa(Guid id)
+        public TarefaResponse DeleteTarefa(Guid id, string usuarioEmail)
         {
             if (id == Guid.Empty)
                 throw new ArgumentException("ID inválido.");
+            if (string.IsNullOrWhiteSpace(usuarioEmail))
+                throw new ArgumentException("Email do usuário é obrigatório.");
 
             var tarefas = _tarefaRepository.GetAll();
-            var tarefa = tarefas.FirstOrDefault(t => t.Id == id);
+            var tarefa = tarefas.FirstOrDefault(t => t.Id == id && t.UsuarioEmail == usuarioEmail);
 
             if (tarefa == null)
                 throw new KeyNotFoundException("Tarefa não encontrada.");
@@ -83,26 +93,36 @@ namespace TarefasTeste.Domain.Service
             };
         }
 
-        public List<TarefaResponse> GetAllTarefas()
+        public List<TarefaResponse> GetAllTarefas(string usuarioEmail)
         {
-            var tarefas = _tarefaRepository.GetAll();
+            if (string.IsNullOrWhiteSpace(usuarioEmail))
+                throw new ArgumentException("Email do usuário é obrigatório.");
+
+            var tarefas = _tarefaRepository.GetAll()
+                .Where(t => t.UsuarioEmail == usuarioEmail)
+                .ToList();
+
             return tarefas.Select(tarefa => new TarefaResponse
             {
                 Id = tarefa.Id,
                 Titulo = tarefa.Titulo,
                 Descricao = tarefa.Descricao,
                 Status = tarefa.Status,
-                DataHoraCriacao = tarefa.DataHoraCriacao
+                DataHoraCriacao = tarefa.DataHoraCriacao,
+                UsuarioEmail = tarefa.UsuarioEmail
             }).ToList();
         }
 
-        public TarefaResponse GetTarefaById(Guid id)
+        public TarefaResponse GetTarefaById(Guid id, string usuarioEmail)
         {
             if (id == Guid.Empty)
                 throw new ArgumentException("ID inválido.");
 
+            if (string.IsNullOrWhiteSpace(usuarioEmail))
+                throw new ArgumentException("Email do usuário é obrigatório.");
+
             var tarefas = _tarefaRepository.GetAll();
-            var tarefa = tarefas.FirstOrDefault(t => t.Id == id);
+            var tarefa = tarefas.FirstOrDefault(t => t.Id == id && t.UsuarioEmail == usuarioEmail);
 
             if (tarefa == null)
                 throw new KeyNotFoundException("Tarefa não encontrada.");
@@ -113,8 +133,10 @@ namespace TarefasTeste.Domain.Service
                 Titulo = tarefa.Titulo,
                 Descricao = tarefa.Descricao,
                 Status = tarefa.Status,
-                DataHoraCriacao = tarefa.DataHoraCriacao
+                DataHoraCriacao = tarefa.DataHoraCriacao,
+                UsuarioEmail = tarefa.UsuarioEmail
             };
         }
     }
 }
+

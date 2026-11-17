@@ -1,10 +1,15 @@
 using System.Collections.Concurrent;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.Tokens;
 using TarefasTeste.Domain.Dtos;
 using TarefasTeste.Domain.Entities;
 using TarefasTeste.Domain.Interfaces.Repositories;
@@ -15,6 +20,9 @@ namespace TarefasTeste.Api.Tests;
 
 public class TarefaEndpointsTests
 {
+    private const string TestEmail = "usuario@example.com";
+    private static readonly byte[] TestKey = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
+
     [Fact]
     public async Task Criar_tarefa_retorna_created_e_dados_da_tarefa()
     {
@@ -161,6 +169,58 @@ public class TarefaEndpointsTests
     }
 
     [Fact]
+    public async Task Atualizar_tarefa_por_endpoint_preserva_data_e_atualiza_status()
+    {
+        using var factory = new TarefaApiFactory();
+        using var client = factory.CreateClient();
+        var cadastrada = new Tarefa
+        {
+            Titulo = "Original",
+            Descricao = "Descrição original",
+            DataHoraCriacao = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+        };
+        factory.Repository.Add(cadastrada);
+
+        var response = await client.PutAsJsonAsync($"/api/tarefa/{cadastrada.Id}", new TarefaRequest
+        {
+            Titulo = "Atualizada",
+            Descricao = "Nova descrição",
+            Status = true
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var atualizada = await response.Content.ReadFromJsonAsync<TarefaResponse>();
+        Assert.NotNull(atualizada);
+        Assert.Equal(cadastrada.Id, atualizada.Id);
+        Assert.Equal("Atualizada", atualizada.Titulo);
+        Assert.Equal("Nova descrição", atualizada.Descricao);
+        Assert.True(atualizada.Status);
+        Assert.Equal(cadastrada.DataHoraCriacao, atualizada.DataHoraCriacao);
+        var consultada = await client.GetFromJsonAsync<TarefaResponse>($"/api/tarefa/{cadastrada.Id}");
+        Assert.NotNull(consultada);
+        Assert.Equal("Atualizada", consultada.Titulo);
+        Assert.True(consultada.Status);
+    }
+
+    [Fact]
+    public async Task Atualizar_tarefa_rejeita_id_inexistente_e_titulo_vazio()
+    {
+        using var factory = new TarefaApiFactory();
+        using var client = factory.CreateClient();
+        var cadastrada = new Tarefa { Titulo = "Original" };
+        factory.Repository.Add(cadastrada);
+
+        var inexistente = await client.PutAsJsonAsync($"/api/tarefa/{Guid.NewGuid()}",
+            new TarefaRequest { Titulo = "Atualizada" });
+        var tituloVazio = await client.PutAsJsonAsync($"/api/tarefa/{cadastrada.Id}",
+            new TarefaRequest { Titulo = "  " });
+
+        Assert.Equal(HttpStatusCode.NotFound, inexistente.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, tituloVazio.StatusCode);
+        Assert.Equal("Original", Assert.Single(factory.Repository.GetAll()).Titulo);
+    }
+
+    [Fact]
     public void Atualizar_tarefa_preserva_data_original()
     {
         var repository = new InMemoryTarefaRepository();
@@ -178,7 +238,7 @@ public class TarefaEndpointsTests
             Titulo = "Atualizada",
             Descricao = "Nova descrição",
             Status = true
-        });
+        }, TestEmail);
 
         Assert.Equal(cadastrada.DataHoraCriacao, resultado.DataHoraCriacao);
         var atualizada = Assert.Single(repository.GetAll());
@@ -193,7 +253,7 @@ public class TarefaEndpointsTests
     {
         var service = new TarefaService(new InMemoryTarefaRepository());
 
-        Assert.Throws<KeyNotFoundException>(() => service.UpdateTarefa(Guid.NewGuid(), new TarefaRequest()));
+        Assert.Throws<KeyNotFoundException>(() => service.UpdateTarefa(Guid.NewGuid(), new TarefaRequest(), TestEmail));
     }
 
     [Fact]
@@ -208,22 +268,96 @@ public class TarefaEndpointsTests
         };
         repository.Add(cadastrada);
 
-        var resultado = new TarefaService(repository).DeleteTarefa(cadastrada.Id);
+        var resultado = new TarefaService(repository).DeleteTarefa(cadastrada.Id, TestEmail);
 
         Assert.Equal(cadastrada.DataHoraCriacao, resultado.DataHoraCriacao);
         Assert.Empty(repository.GetAll());
     }
 
+    [Fact]
+    public async Task Tarefas_sao_restritas_ao_proprietario_e_registros_legados_nao_sao_expostos()
+    {
+        using var factory = new TarefaApiFactory();
+        using var owner = factory.CreateClient();
+        using var other = factory.CreateClientFor("outro@example.com");
+        using var anonymous = factory.CreateAnonymousClient();
+        var legacy = new Tarefa { Titulo = "Legada", Descricao = "Sem dono" };
+        factory.Repository.AddLegacy(legacy);
+
+        var created = await owner.PostAsJsonAsync("/api/tarefa", new TarefaRequest { Titulo = "Privada", Descricao = "Descrição" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var task = await created.Content.ReadFromJsonAsync<TarefaResponse>();
+        Assert.NotNull(task);
+        Assert.Equal(TestEmail, task.UsuarioEmail);
+        Assert.Equal(TestEmail, factory.Repository.GetAll().Single(t => t.Id == task.Id).UsuarioEmail);
+        Assert.Single((await owner.GetFromJsonAsync<List<TarefaResponse>>("/api/tarefa"))!);
+        Assert.Empty((await other.GetFromJsonAsync<List<TarefaResponse>>("/api/tarefa"))!);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/tarefa")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/tarefa/{task.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/tarefa/{legacy.Id}")).StatusCode);
+        var update = new TarefaRequest { Titulo = "Alterada", Descricao = "Descrição" };
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PutAsJsonAsync($"/api/tarefa/{task.Id}", update)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PutAsJsonAsync($"/api/tarefa/{legacy.Id}", update)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/tarefa/{task.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.DeleteAsync($"/api/tarefa/{legacy.Id}")).StatusCode);
+        Assert.Equal("Privada", factory.Repository.GetAll().Single(t => t.Id == task.Id).Titulo);
+        Assert.Equal(2, factory.Repository.GetAll().Count);
+    }
+
     private sealed class TarefaApiFactory : WebApplicationFactory<global::Program>
     {
+        private static readonly object ConfigurationLock = new();
         public InMemoryTarefaRepository Repository { get; } = new();
+
+        public new HttpClient CreateClient() => CreateClientFor(TestEmail);
+
+        public HttpClient CreateAnonymousClient() => CreateClientWithTestConfiguration();
+
+        private HttpClient CreateClientWithTestConfiguration()
+        {
+            lock (ConfigurationLock)
+            {
+                var previousKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+                try
+                {
+                    Environment.SetEnvironmentVariable("JWT_SECRET_KEY", Convert.ToBase64String(TestKey));
+                    return base.CreateClient();
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("JWT_SECRET_KEY", previousKey);
+                }
+            }
+        }
+
+        public HttpClient CreateClientFor(string email)
+        {
+            var client = CreateClientWithTestConfiguration();
+            var token = new JwtSecurityToken(
+                issuer: "Usuarios.App.API",
+                audience: "Usuarios.App.Clients",
+                claims: new[] { new Claim(ClaimTypes.Name, email) },
+                expires: DateTime.UtcNow.AddMinutes(10),
+                signingCredentials: new SigningCredentials(new SymmetricSecurityKey(TestKey), SecurityAlgorithms.HmacSha256));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(token));
+            return client;
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JwtSettings:SecretKey"] = Convert.ToBase64String(TestKey),
+                ["JwtSettings:Issuer"] = "Usuarios.App.API",
+                ["JwtSettings:Audience"] = "Usuarios.App.Clients"
+            }));
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<ITarefaRepository>();
                 services.AddSingleton<ITarefaRepository>(Repository);
+                services.PostConfigure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+                    Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme,
+                    options => options.TokenValidationParameters.IssuerSigningKey = new SymmetricSecurityKey(TestKey));
             });
         }
     }
@@ -232,7 +366,13 @@ public class TarefaEndpointsTests
     {
         private readonly ConcurrentDictionary<Guid, Tarefa> _tarefas = new();
 
-        public void Add(Tarefa tarefa) => _tarefas[tarefa.Id] = Clone(tarefa);
+        public void Add(Tarefa tarefa)
+        {
+            tarefa.UsuarioEmail ??= TestEmail;
+            _tarefas[tarefa.Id] = Clone(tarefa);
+        }
+
+        public void AddLegacy(Tarefa tarefa) => _tarefas[tarefa.Id] = Clone(tarefa);
 
         public void Update(Tarefa tarefa) => _tarefas[tarefa.Id] = Clone(tarefa);
 
@@ -246,7 +386,8 @@ public class TarefaEndpointsTests
             Titulo = tarefa.Titulo,
             Descricao = tarefa.Descricao,
             Status = tarefa.Status,
-            DataHoraCriacao = tarefa.DataHoraCriacao
+            DataHoraCriacao = tarefa.DataHoraCriacao,
+            UsuarioEmail = tarefa.UsuarioEmail
         };
     }
 }

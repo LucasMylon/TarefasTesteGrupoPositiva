@@ -31,6 +31,29 @@ public class DataHoraCriacaoMappingTests
     }
 
     [Fact]
+    public void Proprietario_e_persistido_em_coluna_nullable_para_tarefas_legadas()
+    {
+        using var context = new DataContext();
+        var entity = context.Model.FindEntityType(typeof(Tarefa));
+        Assert.NotNull(entity);
+        var property = entity.FindProperty(nameof(Tarefa.UsuarioEmail));
+        Assert.NotNull(property);
+        Assert.True(property.IsNullable);
+        Assert.Equal("USUARIOEMAIL", property.GetColumnName());
+    }
+
+    [Fact]
+    public void Migracao_de_proprietario_preserva_tarefas_legadas_sem_atribuicao()
+    {
+        using var context = new DataContext();
+        var script = context.GetService<IMigrator>().GenerateScript(
+            "20261117181950_AdicionarDataHoraCriacao", "20261117220216_AdicionarProprietario");
+
+        Assert.Contains("ADD [USUARIOEMAIL] nvarchar(max) NULL", script);
+        Assert.DoesNotContain("UPDATE [Tarefas]", script);
+    }
+
+    [Fact]
     public void Migracao_preenche_registros_existentes_antes_de_tornar_coluna_obrigatoria()
     {
         using var context = new DataContext();

@@ -20,6 +20,10 @@ namespace TarefasTeste.Infra.Data.Mappings
                 .HasColumnName("DATAHORACRIACAO")
                 .HasConversion(value => value, value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
+            builder.Property(t => t.UsuarioEmail)
+                .HasColumnName("USUARIOEMAIL")
+                .IsRequired(false);
+
             builder.HasIndex(t => t.Titulo).IsUnique();
         }
     }

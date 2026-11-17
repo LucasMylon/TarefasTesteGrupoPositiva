@@ -23,11 +23,13 @@ dotnet tool install --global dotnet-ef --version 10.0.15
 dotnet ef database update --project TarefasTeste.Infra.Data --startup-project TarefasTeste.Infra.Data
 ```
 
+A API associa novas tarefas ao email do usuário autenticado e restringe leitura, alteração e exclusão ao proprietário. As tarefas anteriores à migração não têm proprietário e permanecem ocultas até serem atribuídas manualmente por um administrador. O índice de título continua único em toda a tabela, inclusive para tarefas sem proprietário.
+
 ## Endpoints da API
 
 ### Base URL
 ```
-http://localhost:5000/api/tarefa
+http://localhost:5247/api/tarefa
 ```
 
 ### 1. Criar Tarefa (POST)
@@ -120,7 +122,25 @@ http://localhost:5000/api/tarefa
 
 ---
 
-### 4. Excluir Tarefa (DELETE)
+### 4. Atualizar Tarefa (PUT)
+
+**Endpoint:** `PUT /api/tarefa/{id}`
+
+Envia todos os campos editáveis. Para concluir uma tarefa, envie `status: true`; para alterar o título ou a descrição sem mudar o status, envie o status atual.
+
+```json
+{
+  "titulo": "Tarefa atualizada",
+  "descricao": "Descrição atualizada",
+  "status": true
+}
+```
+
+Retorna `200 OK` com a tarefa atualizada e a data de criação original. Retorna `400 Bad Request` para ID inválido ou título vazio e `404 Not Found` se a tarefa não existir.
+
+---
+
+### 5. Excluir Tarefa (DELETE)
 
 **Endpoint:** `DELETE /api/tarefa/{id}`
 

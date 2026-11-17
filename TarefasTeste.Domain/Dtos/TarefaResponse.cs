@@ -33,5 +33,10 @@ namespace TarefasTeste.Domain.Dtos
         /// Data e hora de criação da tarefa em UTC, geradas pelo servidor
         /// </summary>
         public DateTime DataHoraCriacao { get; set; }
+
+        /// <summary>
+        /// Email do usuário proprietário da tarefa (extraído do token JWT)
+        /// </summary>
+        public string? UsuarioEmail { get; set; }
     }
 }

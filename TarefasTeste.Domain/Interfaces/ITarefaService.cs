@@ -7,10 +7,30 @@ namespace TarefasTeste.Domain.Interfaces
 {
     public interface ITarefaService
     {
-        TarefaResponse AddTarefa(TarefaRequest request);
-        TarefaResponse UpdateTarefa(Guid id, TarefaRequest request);
-        TarefaResponse DeleteTarefa(Guid id);
-        List<TarefaResponse> GetAllTarefas();
-        TarefaResponse GetTarefaById(Guid id);
+        /// <summary>
+        /// Adiciona uma nova tarefa associada ao usuário
+        /// </summary>
+        TarefaResponse AddTarefa(TarefaRequest request, string usuarioEmail);
+
+        /// <summary>
+        /// Atualiza uma tarefa existente do usuário
+        /// </summary>
+        TarefaResponse UpdateTarefa(Guid id, TarefaRequest request, string usuarioEmail);
+
+        /// <summary>
+        /// Deleta uma tarefa do usuário
+        /// </summary>
+        TarefaResponse DeleteTarefa(Guid id, string usuarioEmail);
+
+        /// <summary>
+        /// Obtém todas as tarefas do usuário
+        /// </summary>
+        List<TarefaResponse> GetAllTarefas(string usuarioEmail);
+
+        /// <summary>
+        /// Obtém uma tarefa específica do usuário
+        /// </summary>
+        TarefaResponse GetTarefaById(Guid id, string usuarioEmail);
     }
 }
+
