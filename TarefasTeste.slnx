@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Itens de Solução/">
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Project Path="TarefasTeste.Api.Tests/TarefasTeste.Api.Tests.csproj" />
+  <Project Path="TarefasTeste.Api/TarefasTeste.Api.csproj" />
+  <Project Path="TarefasTeste.Domain/TarefasTeste.Domain.csproj" />
+  <Project Path="TarefasTeste.Infra.Data/TarefasTeste.Infra.Data.csproj" />
+</Solution>
